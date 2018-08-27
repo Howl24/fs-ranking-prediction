@@ -1,0 +1,3 @@
+[submodule "scikit-feature"]
+	path = scikit-feature
+	url = https://github.com/jundongl/scikit-feature.git
