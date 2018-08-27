@@ -1,6 +1,6 @@
 from . import MetaFeature as MF
-from project import META_FEATURE_RESULT_PATH
 import pandas as pd
+from project import META_FEATURE_RESULT_PATH
 from project.utils import read_datasets
 from project.utils.preprocessing import evaluate_preprocessing
 from project.utils.io import ResultMixin
