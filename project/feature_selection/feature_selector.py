@@ -16,7 +16,6 @@ from project.utils.io import ResultMixin
 from project.utils.metrics import evaluate_metric
 from project.utils.utils import parallel
 from project.feature_selection.methods import evaluate_feature_selection
-from project.meta_learner.meta_learner import Ranking
 
 import logging
 logger = logging.getLogger("feature_selection")
@@ -186,6 +185,25 @@ class FeatureSelection(BaseEstimator, SelectorMixin):
 # Results
 
 
+class Ranking(object):
+    def __init__(self):
+        self.scores = {}
+
+    def add_score(self, item, score):
+        self.scores[item] = score
+
+    def build_ranking(self, rank_method="max"):
+        ranking = {}
+
+        if rank_method == "max":
+            sorted_scores = sorted(self.scores.items(), key=lambda x: x[1],
+                                   reverse=True)
+            ranking = {item: idx
+                       for idx, (item, score) in enumerate(sorted_scores)}
+
+        return ranking
+
+
 class FSResults(ResultMixin):
     PATH = FEATURE_SELECTION_RESULT_PATH
 
@@ -228,9 +246,7 @@ class FSResults(ResultMixin):
 
             ranking.add_score(pipeline, max_score)
 
-        ranking.update_rank()
-
-        return ranking
+        return ranking.build_ranking(rank_method="max")
 
     def plot(self):
         plt.figure(figsize=(20, 10))
@@ -267,7 +283,7 @@ class FSRCollection(ResultMixin):
         self.results.append(fs_result)
 
     def ranking(self):
-        return [r.ranking() for r in self.results]
+        return pd.DataFrame([r.ranking() for r in self.results])
 
 
 # -----------------------------------------------------------------------------
