@@ -198,7 +198,7 @@ class Ranking(object):
         if rank_method == "max":
             sorted_scores = sorted(self.scores.items(), key=lambda x: x[1],
                                    reverse=True)
-            ranking = {item: idx
+            ranking = {item: idx+1
                        for idx, (item, score) in enumerate(sorted_scores)}
 
         return ranking
@@ -283,7 +283,11 @@ class FSRCollection(ResultMixin):
         self.results.append(fs_result)
 
     def ranking(self):
-        return pd.DataFrame([r.ranking() for r in self.results])
+        df = pd.DataFrame([{
+            "dataset": r.dataset_id,
+            **r.ranking(),
+            } for r in self.results])
+        return df.set_index("dataset")
 
 
 # -----------------------------------------------------------------------------
