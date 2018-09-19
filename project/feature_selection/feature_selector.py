@@ -234,7 +234,7 @@ class Ranking(object):
 
         if rank_method == "max_float":
             fs_methods, scores = zip(*self.scores.items())
-            rank_scores = minmax_scale(scores, feature_range=(1,4))
+            rank_scores = minmax_scale(scores, feature_range=(1,len(fs_methods)))
 
             ranking = {item: score
                        for item, score in zip(fs_methods, rank_scores)}
