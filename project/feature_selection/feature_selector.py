@@ -9,6 +9,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.feature_selection.base import SelectorMixin
 from sklearn.exceptions import NotFittedError
 from sklearn.utils.validation import check_is_fitted
+from sklearn.preprocessing import minmax_scale
 
 from project import FEATURE_SELECTION_RESULT_PATH
 from project.utils import read_datasets
@@ -231,6 +232,13 @@ class Ranking(object):
             ranking = {item: idx+1
                        for idx, (item, score) in enumerate(sorted_scores)}
 
+        if rank_method == "max_float":
+            fs_methods, scores = zip(*self.scores.items())
+            rank_scores = minmax_scale(scores, feature_range=(1,4))
+
+            ranking = {item: score
+                       for item, score in zip(fs_methods, rank_scores)}
+
         return ranking
 
 
@@ -306,7 +314,7 @@ class FSResults(ResultMixin):
                 ('results', results_df),
                 ]
 
-    def ranking(self):
+    def ranking(self, rank_method):
         data = self.resultsToDataFrame()
         group = data.groupby(['pipeline', 'nf']).mean().T
 
@@ -321,7 +329,7 @@ class FSResults(ResultMixin):
 
             ranking.add_score(pipeline, max_score)
 
-        return ranking.build_ranking(rank_method="max")
+        return ranking.build_ranking(rank_method=rank_method)
 
     def plot(self):
         plt.figure(figsize=(20, 10))
@@ -334,6 +342,17 @@ class FSResults(ResultMixin):
                    ci=[90])
         plt.xlabel("Número de atributos")
         plt.ylabel('Score')
+
+    def copy(self, results=True):
+        new_fsr = FSResults(self.dataset_id)
+        for train, test in self.folds:
+            new_fsr.add_fold(train, test)
+
+        if results:
+            for fold_idx, results in self.results.items():
+                new_fsr.add_results(fold_idx, results)
+
+        return new_fsr
 
 
 class FSRCollection(ResultMixin):
@@ -357,12 +376,20 @@ class FSRCollection(ResultMixin):
     def add_result(self, fs_result):
         self.results[fs_result.dataset_id] = fs_result
 
-    def ranking(self):
+    def ranking(self, rank_method):
         df = pd.DataFrame([{
             "dataset": r.dataset_id,
-            **r.ranking(),
+            **r.ranking(rank_method),
             } for d, r in self.results.items()])
         return df.set_index("dataset")
 
+    def copy(self, fsr_results=True):
+        new_fsrc = FSRCollection(self.evaluation_id)
+
+        for dataset_name, fs_results in self.results.items():
+            new_fsr = fs_results.copy(results=fsr_results)
+            new_fsrc.add_result(new_fsr)
+
+        return new_fsrc
 
 # -----------------------------------------------------------------------------
