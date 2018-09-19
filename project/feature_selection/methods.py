@@ -1,6 +1,9 @@
 from skfeature.function.similarity_based import reliefF
 from skfeature.function.similarity_based import fisher_score
 from skfeature.function.statistical_based import chi_square
+from sklearn.ensemble import RandomForestClassifier
+
+
 from skfeature.function.statistical_based import CFS
 from sklearn.feature_selection import RFE
 from sklearn.svm import LinearSVC
@@ -9,7 +12,7 @@ from project.feature_selection.genetic_algorithm import GeneticAlgorithm
 from project.feature_selection.genetic_algorithm import tan_fitness_function
 import numpy as np
 from project.utils import calculate_time_lapse
-
+from functools import reduce
 
 def reliefF_evaluation(X, y, n_features, **kwargs):
     time_lapse, score = calculate_time_lapse(reliefF.reliefF,
@@ -34,6 +37,22 @@ def fisher_evaluation(X, y, n_features, **kwargs):
 
     return selected_features
 
+def random_forest_evaluation(X, y, n_features, **kwargs):
+    # 1000 estimators
+
+    rfc = RandomForestClassifier(n_estimators=1000,
+                                 max_features = n_features,
+                                 )
+
+    rfc.fit(X, y)
+    score = rfc.feature_importances_
+    idx = np.argsort(score, 0)[::-1]
+    selected_features = {}
+
+    for nf in range(1, n_features + 1):
+        selected_features[nf] = idx[0:nf]
+
+    return selected_features
 
 def chi_square_evaluation(X, y, n_features):
     time_lapse, score = calculate_time_lapse(chi_square.chi_square,
@@ -91,9 +110,10 @@ FEATURE_SELECTION_METHODS = {
         'fisher': fisher_evaluation,
         'chi_square': chi_square_evaluation,
         'cfs': cfs_evaluation,
-        'rfe_svc': rfe_svc_evaluation,
-        'reliefF_ga': reliefF_ga_evaluation,
-        'fisher_ga': fisher_ga_evaluation,
+        'random_forest': random_forest_evaluation,
+        #'rfe_svc': rfe_svc_evaluation,
+        #'reliefF_ga': reliefF_ga_evaluation,
+        #'fisher_ga': fisher_ga_evaluation,
         }
 
 
