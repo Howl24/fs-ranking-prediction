@@ -111,7 +111,7 @@ FEATURE_SELECTION_METHODS = {
         'chi_square': chi_square_evaluation,
         'cfs': cfs_evaluation,
         'random_forest': random_forest_evaluation,
-        #'rfe_svc': rfe_svc_evaluation,
+        'rfe_svc': rfe_svc_evaluation,
         #'reliefF_ga': reliefF_ga_evaluation,
         #'fisher_ga': fisher_ga_evaluation,
         }
