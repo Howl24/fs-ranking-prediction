@@ -15,7 +15,7 @@ class RankingPredictor(NearestNeighbors):
         return mf_data, fs_data
 
     def fit(self, X, y):
-        self._fit_y = y.values
+        self._fit_y = y
         return super().fit(X)
 
     def predict(self, X):
