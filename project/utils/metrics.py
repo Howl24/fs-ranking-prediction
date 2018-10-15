@@ -4,8 +4,14 @@ from imblearn.metrics import sensitivity_score
 from imblearn.metrics import specificity_score
 from collections import namedtuple
 from sklearn.metrics import make_scorer
+from sklearn.metrics import auc
 from scipy.stats import spearmanr
 import numpy as np
+import pandas as pd
+
+
+
+
 
 """
 METRICAS
@@ -26,6 +32,30 @@ def spearman_rank_score(y_test, y_pred):
     
     return np.mean(coefs)
 
+def _accuracy_loss(y_score, y_pred):
+    pred_scores = pd.DataFrame()
+    for p in y_score[np.argsort(y_pred)]:
+        pred_scores = pred_scores.append(p, ignore_index=True)
+
+    pred_scores = pred_scores.T
+
+    max_scores = pred_scores.max(axis=1)
+    loss_scores = abs(pred_scores.sub(max_scores, axis=0)).cummin(axis=1)
+
+    nfs = loss_scores.shape[1]
+    loss_auc = []
+    for i in loss_scores.iterrows():
+        loss_auc.append(auc(i[1].keys(), i[1].values))
+
+    return np.mean(loss_auc)
+
+def accuracy_loss(y_scores, y_pred):
+    results = []
+    for ys, yp in zip(y_scores, y_pred):
+        results.append(_accuracy_loss(ys, yp))
+
+    return np.mean(results)
+
 
 Metric = namedtuple("Metric", ["method", "kwargs", "name"])
 
@@ -39,7 +69,9 @@ METRICS = {
         'spc': Metric(specificity_score, {'average': "weighted"},
                       "Especificidad"),
         'spearman': Metric(spearman_rank_score, {},
-                           "Spearman-Rank-Coefficient")
+                           "Spearman-Rank-Coefficient"),
+        'acc_loss': Metric(accuracy_loss, {},
+                           "Max Accuracy Loss"),
         }
 
 def get_metric(metric_key):
