@@ -67,100 +67,93 @@ class FSPipelineEvaluator():
         self.metric = metric
         self.max_n_features = max_n_features
 
-    def _evaluate_fold(self, X, y, train, test, prev_eval=None):
+    def _evaluate_cv(self, X, y, pipelines):
+        """Evalúa los pipelines siguiendo el método de cv asignado
+           X, y -> dataset
+           results -> instancia de FSResults. 
+        """
 
-        X_train, X_test = X[train], X[test]
-        y_train, y_test = y[train], y[test]
+        cv_results = {}
+        for p in pipelines:
+            cv_results[p.info()] = {}
 
-        if self.max_n_features is None:
-            max_n_features_ = X_train.shape[1]
-        else:
-            max_n_features_ = self.max_n_features
+        for fold_idx, (train, test) in enumerate(self.cv.split(X, y)):
+            X_train, X_test = X[train], X[test]
+            y_train, y_test = y[train], y[test]
 
-        results = {}
-        for pipeline in self.pipelines:
+            if self.max_n_features is None:
+                max_n_features_ = X_train.shape[1]
+            else:
+                max_n_features_ = self.max_n_features
 
-            # Fit the pipeline to get the selected features
-            # from 1 to max_n_features
-            pipeline_ = clone(pipeline)
+            for pipeline in pipelines:
+                pipeline_ = clone(pipeline)
 
-            if prev_eval and pipeline_.info() in prev_eval:
-                results[pipeline_.info()] = prev_eval[pipeline_.info()]
-                continue
+                start_time = time.process_time()
+                pipeline_.fit(X_train, y_train,
+                              fs__n_features=max_n_features_)
+                elapsed_time = time.process_time() - start_time
 
-            # Calculate feature selection time and set selected features
-            start_time = time.process_time()
-            pipeline_.fit(X_train, y_train,
-                          fs__n_features=max_n_features_)
-            elapsed_time = time.process_time() - start_time
+                ppl_results = []
+                for n_features in range(1, max_n_features_ + 1):
+                    pipeline_.fit(X_train, y_train, fs__n_features=n_features)
+                    y_pred = pipeline_.predict(X_test)
+                    score = evaluate_metric(self.metric, y_test, y_pred)
 
-            pipeline_results = []
-            for n_features in range(1, max_n_features_ + 1):
-                pipeline_.fit(X_train, y_train, fs__n_features=n_features)
-                y_pred = pipeline_.predict(X_test)
-                score = evaluate_metric(self.metric, y_test, y_pred)
+                    support_ = pipeline_.named_steps['fs'].support_
+                    # Reduce feature array size
+                    features = np.where(support_)[0].astype('int16')
+                    ppl_results.append((features, score))
 
-                support_ = pipeline_.named_steps['fs'].support_
-                # Reduce feature array size
-                features = np.where(support_)[0].astype('int16')
-                pipeline_results.append((features, score))
 
-            results[pipeline_.info()] = (elapsed_time, pipeline_results)
-        return results
+                cv_results[pipeline_.info()][fold_idx] = (elapsed_time,
+                                                          ppl_results)
 
-    def evaluate_dataset(self, dataset):
+        return cv_results
+
+    def evaluate_dataset(self, dataset, reset=False):
         X = dataset.X
         y = dataset.y
 
-        # Get previous results
-        if dataset.name in self.results.results:
-            ev_results = self.results.results[dataset.name]
+        ev_results = FSResults(dataset.name)
 
-        else:
-            ev_results = FSResults(dataset.name)
-            # Add folds
-            for train, test in self.cv.split(X, y):
-                ev_results.add_fold(train, test)
+        if not reset:
+            # Load previous dataset evaluation results
+            ev_results = ev_results.load()
+
+        new_pipelines = [p for p in self.pipelines
+                         if p.info() not in ev_results.pipelines()]
 
         logger.info(" Evaluación de dataset: %s iniciada.", dataset.name)
 
-        for i, (train, test) in enumerate(ev_results.folds):
-            #logger.info(" Dataset: %s. Fold: %d.", dataset.name, i)
+        cv_results = self._evaluate_cv(X, y, new_pipelines)
+        for pipeline_id in cv_results:
+            ev_results.add_results(pipeline_id, cv_results[pipeline_id])
 
-            #print(ev_results.results))
-            if i in ev_results.results:
-                prev_eval = ev_results.results[i]
-            else:
-                prev_eval = None
+        ev_results.save()
 
-            fold_results = self._evaluate_fold(X, y, train, test, prev_eval)
-            ev_results.add_results(i, fold_results)
-
-            #ev_results.add_results(train, test, fold_results)
         logger.info(" Evaluación de dataset: %s terminada.", dataset.name)
         return ev_results
 
     def run(self, corpus_id, reset=False, n_jobs=1):
-        # TODO
-        # Add reset
-        # (Load previous evaluations and get new ones)
+        """Evalúa datasets a partir de un corpus id"""
         datasets = read_datasets(corpus_id)
         return self._run(corpus_id, datasets, reset, n_jobs)
 
     def _run(self, corpus_id, datasets, reset=False, n_jobs=1):
-        self.results = FSRCollection(corpus_id)
-
-        if not reset:
-            self.results = self.results.load()
-
+        """Evalúa un listado de datasets"""
         logger.info("Evaluando " + corpus_id)
-        datasets_ = [(d, ) for d in datasets]
-        all_results = parallel(self.evaluate_dataset, datasets_, n_jobs)
-        for fs_result in all_results:
-            self.results.add_result(fs_result)
+        configurations = [(d, reset) for d in datasets]
 
-        return self.results
+        parallel(self.evaluate_dataset, configurations, n_jobs)
 
+        # Load all results and return a Collection
+        #results = FSRCollection(corpus_id)
+        #for dataset in datasets:
+        #    fsr = FSResults(dataset.name).load()
+        #    results.add_result(fsr)
+
+        #return results
 
 class FeatureSelection(BaseEstimator, SelectorMixin):
     """Feature selector for rank based methods.
@@ -247,35 +240,63 @@ class FSResults(ResultMixin):
 
     def __init__(self, dataset_id):
         self.dataset_id = dataset_id
-        self.folds = []
-        self.results = {}  # results by fold. Key == fold idx
+        self.results = {}  # results by pipeline
 
-    #def add_results(self, train_idx, test_idx, fold_results):
-    #    idx = len(self.folds)
-    #    self.folds.append((train_idx, test_idx))
-    #    self.results[idx] = fold_results
+    def __str__(self):
+        return "_".join([
+            self.dataset_id,
+        ])
 
-    def add_results(self, fold_idx, fold_results):
-        self.results[fold_idx] = fold_results
+    def pipelines(self):
+        return self.results.keys()
 
-    def add_fold(self, train_idx, test_idx):
-        idx = len(self.folds)
-        self.folds.append((train_idx, test_idx))
-        return idx
+    def add_results(self, pipeline_id, pipeline_results):
+        self.results[pipeline_id] = pipeline_results
 
     def resultsToDataFrame(self):
         data = []
-        for idx, fold_results in self.results.items():
-            for pipeline in fold_results:
-                elapsed_time, result_list = fold_results[pipeline]
+        for pipeline, ppl_results in self.results.items():
+            for fold_idx in ppl_results:
+                elapsed_time, result_list = ppl_results[fold_idx]
                 for features, score in result_list:
                     data.append({
-                        "fold": idx,
+                        "fold": fold_idx,
                         "nf": len(features),
                         "score": score,
                         "pipeline": pipeline,
                         })
         return pd.DataFrame(data)
+
+    def plot(self):
+        plt.figure(figsize=(20, 10))
+
+        sns.tsplot(data=self.resultsToDataFrame(),
+                   value="score",
+                   condition="pipeline",
+                   time='nf',
+                   unit="fold",
+                   ci=[90])
+        plt.xlabel("Número de atributos")
+        plt.ylabel('Score')
+
+    def ranking(self, rank_method):
+        data = self.resultsToDataFrame()
+        group = data.groupby(['pipeline', 'nf']).mean().T
+
+        pipelines = group.columns.levels[0]
+        self.rank = Ranking()
+        for pipeline in pipelines:
+            score = group[pipeline].loc['score']
+
+            # Ranking based on max score in feature range
+            max_score = score.max()
+            # max_nf_score = score.idxmax()
+
+            self.rank.add_score(pipeline, max_score)
+
+        return self.rank.build_ranking(rank_method=rank_method)
+
+    # ----------------------------------------------------------------------------
 
     def foldsToDataFrame(self):
         data = []
@@ -314,35 +335,6 @@ class FSResults(ResultMixin):
                 ('results', results_df),
                 ]
 
-    def ranking(self, rank_method):
-        data = self.resultsToDataFrame()
-        group = data.groupby(['pipeline', 'nf']).mean().T
-
-        pipelines = group.columns.levels[0]
-        ranking = Ranking()
-        for pipeline in pipelines:
-            score = group[pipeline].loc['score']
-
-            # Ranking based on max score in feature range
-            max_score = score.max()
-            # max_nf_score = score.idxmax()
-
-            ranking.add_score(pipeline, max_score)
-
-        return ranking.build_ranking(rank_method=rank_method)
-
-    def plot(self):
-        plt.figure(figsize=(20, 10))
-
-        sns.tsplot(data=self.resultsToDataFrame(),
-                   value="score",
-                   condition="pipeline",
-                   time='nf',
-                   unit="fold",
-                   ci=[90])
-        plt.xlabel("Número de atributos")
-        plt.ylabel('Score')
-
     def copy(self, results=True):
         new_fsr = FSResults(self.dataset_id)
         for train, test in self.folds:
@@ -376,12 +368,22 @@ class FSRCollection(ResultMixin):
     def add_result(self, fs_result):
         self.results[fs_result.dataset_id] = fs_result
 
-    def ranking(self, rank_method):
-        df = pd.DataFrame([{
-            "dataset": r.dataset_id,
-            **r.ranking(rank_method),
-            } for d, r in self.results.items()])
-        return df.set_index("dataset")
+    def ranking(self, rank_method, return_scores=False):
+        df_rank = pd.DataFrame([{
+                    "dataset": r.dataset_id,
+                    **r.ranking(rank_method),
+                    } for d, r in self.results.items()])
+        df_rank.set_index("dataset", inplace=True)
+            
+        df_scores = None
+        if return_scores:
+            df_scores = pd.DataFrame([{
+                "dataset": r.dataset_id,
+                **r.rank.scores,
+                } for d, r in self.results.items()])
+            df_scores.set_index("dataset", inplace=True)
+
+        return df_rank, df_scores
 
     def copy(self, fsr_results=True):
         new_fsrc = FSRCollection(self.evaluation_id)
