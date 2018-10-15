@@ -73,7 +73,7 @@ def load_pickle(filename):
         with open(filename, "rb") as file:
             return pickle.load(file)
     except FileNotFoundError:
-        logging.exception("Archivo no encontrado.")
+        logging.error("Archivo no encontrado.")
         return None
 
 
