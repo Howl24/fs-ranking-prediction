@@ -17,8 +17,7 @@ class RankingPredictor(NearestNeighbors):
         fs_data = FSRCollection(self.corpus_id).load()
         df_rank, df_scores = fs_data.ranking("max", return_scores=True)
 
-
-        fold_data =  []
+        fold_data = []
         for fsr in fs_data:
             group = fsr.resultsToDataFrame().groupby(['pipeline',
                                                       'fold']).max().T
@@ -29,7 +28,7 @@ class RankingPredictor(NearestNeighbors):
                 'dataset': fsr.dataset_id,
                 **fold_scores,
                 })
-            
+
         df_fold_scores = pd.DataFrame(fold_data).set_index('dataset')
 
         return df_mf, df_rank, df_scores, df_fold_scores
@@ -44,7 +43,7 @@ class RankingPredictor(NearestNeighbors):
 
         pred_rank = []
         for neighbors in neighbors_rank:
-            rank_mean = np.mean(neighbors,axis=0)
+            rank_mean = np.mean(neighbors, axis=0)
             rank = np.argsort(np.argsort(rank_mean)) + 1
 
             pred_rank.append(rank)
@@ -53,16 +52,17 @@ class RankingPredictor(NearestNeighbors):
 
 
 class RandomRankingPredictor(BaseEstimator):
-    def __init__(self, rank_size):
-        self.rank_size = rank_size
+    def __init__(self):
+        pass
 
     def fit(self, X, y=None):
         return self
 
     def predict(self, X):
-        n_samples = X.shape[0]
+        n, rank_size = X.shape
+
         pred_rank = []
-        for i in range(n_samples):
-            pred_rank.append(np.random.permutation(self.rank_size) + 1)
+        for i in range(n):
+            pred_rank.append(np.random.permutation(rank_size) + 1)
 
         return np.array(pred_rank)
