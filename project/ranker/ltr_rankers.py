@@ -9,7 +9,7 @@ def wide2long(X, y):
     return np.concatenate([X_cont, X_cats], axis=1), y.reshape(-1)
 
 def cv_lgbm(lightgbm, X, y, y_scores, kfolds, params, num_rounds=1000, 
-            early_stopping_rounds=30, verbose_eval=False):
+            early_stopping_rounds=30, verbose_eval=False, metric='ndcg@13'):
     results = []
     models = []
     for idx, (trn_idx, val_idx) in enumerate(kfolds.split(X, y)):
@@ -43,8 +43,8 @@ def cv_lgbm(lightgbm, X, y, y_scores, kfolds, params, num_rounds=1000,
         val_spearman = evaluate_metric("spearman", y_val, y_pred_val)
         val_acc_loss = evaluate_metric("mean_acc_loss", y_scores_val, 
                                        y_val.shape[1] - y_pred_val + 1)
-        trn_ndcg = bst.best_score['training']['ndcg@13']
-        val_ndcg = bst.best_score['valid_1']['ndcg@13']
+        trn_ndcg = bst.best_score['training'][metric]
+        val_ndcg = bst.best_score['valid_1'][metric]
         
         print(f'Fold {idx + 1:>3} | '
               f'#Est: {bst.best_iteration:>3} | '
@@ -54,7 +54,6 @@ def cv_lgbm(lightgbm, X, y, y_scores, kfolds, params, num_rounds=1000,
               f'Val_ACCLoss: {val_acc_loss: .4f} | '
               f'Trn_NDCG: {trn_ndcg: .4f} | '
               f'Val_NDCG: {val_ndcg: .4f}')
-#         print()
         results.append((trn_spearman, val_spearman, 
                         trn_acc_loss, val_acc_loss,
                         trn_ndcg, val_ndcg))
