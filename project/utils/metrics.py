@@ -59,7 +59,7 @@ def accuracy_loss(y_scores, y_pred):
 
 def _mean_accuracy_loss(y_scores, y_pred, plot=False):
     max_score = y_scores.max()
-    pred_scores = y_scores[np.argsort(y_pred)]
+    pred_scores = y_scores[np.argsort(y_pred)[::-1]]
     loss = max_score - np.maximum.accumulate(pred_scores)
     x = np.linspace(1, loss.shape[0], loss.shape[0])
 

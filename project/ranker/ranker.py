@@ -12,9 +12,10 @@ class RankingPredictor(NearestNeighbors):
         self.corpus_id = corpus_id
 
     def get_data(self):
-        df_mf = MFRCollection(self.corpus_id).load().toDataFrame()
+        mf_data, fs_data = self._get_data()
 
-        fs_data = FSRCollection(self.corpus_id).load()
+        df_mf = mf_data.toDataFrame()
+
         df_rank, df_scores = fs_data.ranking("max", return_scores=True)
 
         fold_data = []
