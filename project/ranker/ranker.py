@@ -33,6 +33,10 @@ class RankingPredictor(NearestNeighbors):
 
         return df_mf, df_rank, df_scores, df_fold_scores
 
+    def _get_data(self):
+        return MFRCollection(self.corpus_id).load(), FSRCollection(self.corpus_id).load()
+
+
     def fit(self, X, y):
         self._fit_y = y
         return super().fit(X)
@@ -55,14 +59,15 @@ class RandomRankingPredictor(BaseEstimator):
     def __init__(self):
         pass
 
-    def fit(self, X, y=None):
+    def fit(self, X, y):
+        self.rank_size = y.shape[1]
         return self
 
     def predict(self, X):
-        n, rank_size = X.shape
+        n, _ = X.shape
 
         pred_rank = []
         for i in range(n):
-            pred_rank.append(np.random.permutation(rank_size) + 1)
+            pred_rank.append(np.random.permutation(self.rank_size) + 1)
 
         return np.array(pred_rank)
