@@ -13,26 +13,28 @@ class RankingPredictor(NearestNeighbors):
 
     def get_data(self):
         mf_data, fs_data = self._get_data()
-
         df_mf = mf_data.toDataFrame()
-
         df_rank, df_scores = fs_data.ranking("max", return_scores=True)
 
-        fold_data = []
-        for fsr in fs_data:
-            group = fsr.resultsToDataFrame().groupby(['pipeline',
-                                                      'fold']).max().T
-            pipelines = group.columns.levels[0]
-            fold_scores = {p: group[p].loc['score'] for p in pipelines}
+        return (df_mf.sort_index(),
+                df_rank.sort_index(),
+                df_scores.sort_index())
 
-            fold_data.append({
-                'dataset': fsr.dataset_id,
-                **fold_scores,
-                })
+        # fold_data = []
+        # for fsr in fs_data:
+        #     group = fsr.resultsToDataFrame().groupby(['pipeline',
+        #                                               'fold']).max().T
+        #     pipelines = group.columns.levels[0]
+        #     fold_scores = {p: group[p].loc['score'] for p in pipelines}
 
-        df_fold_scores = pd.DataFrame(fold_data).set_index('dataset')
+        #     fold_data.append({
+        #         'dataset': fsr.dataset_id,
+        #         **fold_scores,
+        #         })
 
-        return df_mf, df_rank, df_scores, df_fold_scores
+        # df_fold_scores = pd.DataFrame(fold_data).set_index('dataset')
+
+        #return df_mf, df_rank, df_scores, df_fold_scores
 
     def _get_data(self):
         return MFRCollection(self.corpus_id).load(), FSRCollection(self.corpus_id).load()
