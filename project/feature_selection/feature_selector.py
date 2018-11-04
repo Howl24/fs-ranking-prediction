@@ -70,7 +70,7 @@ class FSPipelineEvaluator():
     def _evaluate_cv(self, X, y, pipelines):
         """Evalúa los pipelines siguiendo el método de cv asignado
            X, y -> dataset
-           results -> instancia de FSResults. 
+           results -> instancia de FSResults.
         """
 
         cv_results = {}
@@ -96,15 +96,29 @@ class FSPipelineEvaluator():
 
                 ppl_results = []
                 for n_features in range(1, max_n_features_ + 1):
-                    pipeline_.fit(X_train, y_train, fs__n_features=n_features)
-                    y_pred = pipeline_.predict(X_test)
-                    score = evaluate_metric(self.metric, y_test, y_pred)
+                    pipeline_.fit(X_train, y_train,
+                                  fs__n_features=n_features)
 
+
+                    y_pred = pipeline_.predict(X_test)
+
+                    # Instead of saving the score, we will save
+                    # the predictions and probabilities
+                    # so we can apply other metrics without 
+                    # running again the experiments
+
+                    if hasattr(pipeline_, "decision_function"):
+                        y_prob = pipeline_.decision_function(X_test)
+                    elif hasattr(pipeline, "predict_proba"):
+                        y_prob = pipeline_.predict_proba()
+                    else:
+                        y_prob = y_pred
+
+                    #score = evaluate_metric(self.metric, y_test, y_pred)
                     support_ = pipeline_.named_steps['fs'].support_
                     # Reduce feature array size
                     features = np.where(support_)[0].astype('int16')
-                    ppl_results.append((features, score))
-
+                    ppl_results.append((features, y_pred, y_prob))
 
                 cv_results[pipeline_.info()][fold_idx] = (elapsed_time,
                                                           ppl_results)
@@ -148,12 +162,13 @@ class FSPipelineEvaluator():
         parallel(self.evaluate_dataset, configurations, n_jobs)
 
         # Load all results and return a Collection
-        #results = FSRCollection(corpus_id)
-        #for dataset in datasets:
-        #    fsr = FSResults(dataset.name).load()
-        #    results.add_result(fsr)
+        # results = FSRCollection(corpus_id)
+        # for dataset in datasets:
+        #     fsr = FSResults(dataset.name).load()
+        #     results.add_result(fsr)
 
-        #return results
+        # return results
+
 
 class FeatureSelection(BaseEstimator, SelectorMixin):
     """Feature selector for rank based methods.
@@ -220,14 +235,15 @@ class Ranking(object):
         ranking = {}
 
         if rank_method == "max":
-            sorted_scores = sorted(self.scores.items(), key=lambda x: x[1],
-                                   reverse=True)
+            sorted_scores = sorted(self.scores.items(),
+                                   key=lambda x: x[1])  # reverse=True
             ranking = {item: idx+1
                        for idx, (item, score) in enumerate(sorted_scores)}
 
         if rank_method == "max_float":
             fs_methods, scores = zip(*self.scores.items())
-            rank_scores = minmax_scale(scores, feature_range=(1,len(fs_methods)))
+            rank_scores = minmax_scale(scores,
+                                       feature_range=(1, len(fs_methods)))
 
             ranking = {item: score
                        for item, score in zip(fs_methods, rank_scores)}
@@ -253,9 +269,14 @@ class FSResults(ResultMixin):
     def add_results(self, pipeline_id, pipeline_results):
         self.results[pipeline_id] = pipeline_results
 
-    def resultsToDataFrame(self):
+    def resultsToDataFrame(self, pipelines=None):
         data = []
-        for pipeline, ppl_results in self.results.items():
+
+        if not pipelines:
+            pipelines = self.results.keys()
+
+        for pipeline in pipelines:
+            ppl_results = self.results[pipeline]
             for fold_idx in ppl_results:
                 elapsed_time, result_list = ppl_results[fold_idx]
                 for features, score in result_list:
@@ -267,7 +288,13 @@ class FSResults(ResultMixin):
                         })
         return pd.DataFrame(data)
 
-    def plot(self):
+    def plot(self, **kwargs):
+
+        if not kwargs:
+            kwargs = {
+                    "ci": [90],
+                    }
+
         plt.figure(figsize=(20, 10))
 
         sns.tsplot(data=self.resultsToDataFrame(),
@@ -275,12 +302,12 @@ class FSResults(ResultMixin):
                    condition="pipeline",
                    time='nf',
                    unit="fold",
-                   ci=[90])
+                   **kwargs)  # ci=[90])
         plt.xlabel("Número de atributos")
         plt.ylabel('Score')
 
-    def ranking(self, rank_method):
-        data = self.resultsToDataFrame()
+    def ranking(self, rank_method, fs_list=None):
+        data = self.resultsToDataFrame(pipelines=fs_list)
         group = data.groupby(['pipeline', 'nf']).mean().T
 
         pipelines = group.columns.levels[0]
@@ -312,7 +339,7 @@ class FSResults(ResultMixin):
                 data.append({
                     "fold": fold,
                     "type": "test",
-                    "idx" : idx,
+                    "idx": idx,
                     })
 
         df = pd.DataFrame(data).set_index(['fold', 'type'])
@@ -368,13 +395,16 @@ class FSRCollection(ResultMixin):
     def add_result(self, fs_result):
         self.results[fs_result.dataset_id] = fs_result
 
-    def ranking(self, rank_method, return_scores=False):
+    def ranking(self, rank_method, return_scores=False,
+                fs_list=None):
+
         df_rank = pd.DataFrame([{
                     "dataset": r.dataset_id,
-                    **r.ranking(rank_method),
+                    **r.ranking(rank_method,
+                                fs_list=fs_list),
                     } for d, r in self.results.items()])
         df_rank.set_index("dataset", inplace=True)
-            
+
         df_scores = None
         if return_scores:
             df_scores = pd.DataFrame([{
