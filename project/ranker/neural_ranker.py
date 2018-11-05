@@ -35,7 +35,7 @@ class RankNet(nn.Module):
         latent_featsel_method  = self.embedding(featsel_method)
         output = (latent_metafeatures * latent_featsel_method).sum(1)
         # return output
-        return torch.sigmoid(output) * (self.featsel_methods_sz - 1) + 1
+        return torch.sigmoid(output) # * (self.featsel_methods_sz - 1) + 1
     
     def emb_init(self, x):
         x = x.weight.data
